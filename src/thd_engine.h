@@ -69,9 +69,15 @@ typedef struct {
 
 class cthd_engine {
 
+#define GUARDED_BY(x) \
+    THREAD_ANNOTATION_ATTRIBUTE(guarded_by(x))
+
+#define REQUIRES(...) \
+    THREAD_ANNOTATION_ATTRIBUTE(requires_capability(__VA_ARGS__))
+
 protected:
-	std::vector<std::unique_ptr<cthd_zone>> zones;
-	std::vector<std::unique_ptr<cthd_sensor>> sensors;
+	std::vector<std::unique_ptr<cthd_zone>> zones GUARDED_BY(thd_engine_mutex);
+	std::vector<std::unique_ptr<cthd_sensor>> sensors GUARDED_BY(thd_engine_mutex);
 	std::vector<std::unique_ptr<cthd_cdev>> cdevs;
 	int current_cdev_index;
 	int current_zone_index;
@@ -108,7 +114,7 @@ private:
 	pthread_t thd_engine;
 	pthread_attr_t thd_attr;
 
-	pthread_mutex_t thd_engine_mutex;
+	pthread_mutex_t thd_engine_mutex;  // TODO: convert to std::mutex?
 
 	std::vector<std::string> zone_preferences;
 	static const int thz_notify_debounce_interval = 3;
@@ -175,7 +181,7 @@ public:
 	void thd_read_default_thermal_zones();
 	void thd_read_default_cooling_devices();
 
-	virtual void update_engine_state() {};
+	virtual void update_engine_state() {} REQUIRES(thd_engine_lock);
 	virtual int read_thermal_sensors() {
 		return 0;
 	}
@@ -233,7 +239,7 @@ public:
 		return THD_ERROR;
 	}
 	cthd_zone *search_zone(const std::string& name);
-	cthd_cdev *search_cdev(const std::string& name);
+	cthd_cdev *search_cdev(const std::string& name) REQUIRES(thd_engine_lock);
 	cthd_cdev *match_cdev(const std::string& name);
 	cthd_sensor *search_sensor(const std::string& name);
 	cthd_sensor *get_sensor(int index);
@@ -275,7 +281,7 @@ public:
 	// User/External messages
 	int user_add_sensor(std::string name, std::string path);
 	cthd_sensor *user_get_sensor(unsigned int index);
-	cthd_zone *user_get_zone(unsigned int index);
+	cthd_zone *user_get_zone(unsigned int index) REQUIRES(thd_engine_mutex);
 	int user_add_virtual_sensor(std::string name, std::string dep_sensor,
 			double slope, double intercept);
 
